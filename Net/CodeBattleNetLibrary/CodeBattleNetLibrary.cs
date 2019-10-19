@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Collections.Generic;
 using WebSocket4Net;
 
@@ -89,21 +90,238 @@ namespace CodeBattleNetLibrary
 
         public Point GetPlayerTank() => new Point(PlayerX, PlayerY);
 
-        public List<Point> GetOtherPlayersTanks() => 
+        public List<Point> GetOtherPlayersTanks() =>
             FindingCoordinatesOfElements(
-                Elements.OTHER_TANK_DOWN, 
-                Elements.OTHER_TANK_LEFT, 
-                Elements.OTHER_TANK_RIGHT, 
+                Elements.OTHER_TANK_DOWN,
+                Elements.OTHER_TANK_LEFT,
+                Elements.OTHER_TANK_RIGHT,
                 Elements.OTHER_TANK_UP);
 
-        public List<Point> GetBotsTanks() => 
+        public List<Point> GetBotsTanks() =>
             FindingCoordinatesOfElements(
-                Elements.AI_TANK_DOWN, 
-                Elements.AI_TANK_LEFT, 
-                Elements.AI_TANK_RIGHT, 
+                Elements.AI_TANK_DOWN,
+                Elements.AI_TANK_LEFT,
+                Elements.AI_TANK_RIGHT,
                 Elements.AI_TANK_UP);
 
-        public List<Point> GetBullets() => 
+
+        public List<Point> GetAllOtherTanks()
+        {
+            List<Point> allTanks = new List<Point>();
+            allTanks.AddRange(GetOtherPlayersTanks());
+            allTanks.AddRange(GetBotsTanks());
+
+            return allTanks;
+        }
+
+        public List<Point> GetNearestTanks(int depth)
+        {
+            var me = GetPlayerTank();
+            var otherTanks = GetAllOtherTanks();
+
+            var result = otherTanks
+                .Where(tank => tank.X >= me.X - depth && tank.X <= me.X + depth)
+                .Where(tank => tank.Y >= me.Y - depth && tank.Y <= me.Y + depth)
+                .ToList();
+
+            if (result == null || result.Count() == 0)
+            {
+                if (depth <= 9)
+                {
+                    return GetNearestTanks(depth + 3);
+                }
+
+                return otherTanks;
+            }
+
+            return result;
+        }
+
+        public Point GetNearestTank()
+        {
+            var me = GetPlayerTank();
+            var otherTanks = GetNearestTanks(3); // GetAllOtherTanks();
+            var deltaPoint = new Point(int.MaxValue, int.MaxValue);
+            var index = 0;
+
+            for (var i = 0; i < otherTanks.Count; i++)
+            {
+                if (me.X == otherTanks[i].X)
+                {
+                    deltaPoint.X = 0;
+                    deltaPoint.Y = 0;
+                    index = i;
+                    break;
+                }
+                else if (me.Y == otherTanks[i].Y)
+                {
+                    deltaPoint.X = 0;
+                    deltaPoint.Y = 0;
+                    index = i;
+                    break;
+                }
+                else if (Math.Abs(me.X - otherTanks[i].X) < deltaPoint.X &&
+                    Math.Abs(me.Y - otherTanks[i].Y) < deltaPoint.Y)
+                {
+                    deltaPoint.X = Math.Abs(me.X - otherTanks[i].X);
+                    deltaPoint.Y = Math.Abs(me.Y - otherTanks[i].Y);
+                    index = i;
+                } else
+                {
+                    index = i;
+                }
+            }
+
+            Console.WriteLine("other: " + otherTanks[index]);
+            Console.WriteLine("me: " + me);
+
+            return otherTanks[index];
+        }
+
+        public Point GetNewPoint(Point me, Point finalPoint, out string direction)
+        {
+            var deltaX = Math.Abs(me.X - finalPoint.X);
+            var deltaY = Math.Abs(me.Y - finalPoint.Y);
+            int x = 0;
+            int y = 0;
+
+            if (deltaX == 0)
+            {
+                if(me.Y > finalPoint.Y)
+                {
+                    y = me.Y - 1;
+                    direction = Up();
+                }
+                else
+                {
+                    y = me.Y + 1;
+                    direction = Down();
+                }
+                return new Point(me.X, y);
+            }
+
+            if (deltaY == 0)
+            {
+                if (me.X > finalPoint.X)
+                {
+                    x = me.X - 1;
+                    direction = Left();
+                }
+                else
+                {
+                    x = me.X + 1;
+                    direction = Right();
+                }
+                return new Point(x, me.Y);
+            }
+
+            if (deltaX < deltaY)
+            {
+                if (me.Y > finalPoint.Y)
+                {
+                    y = me.Y - 1;
+                    direction = Up();
+                }
+                else
+                {
+                    y = me.Y + 1;
+                    direction = Down();
+                }
+                return new Point(me.X, y);
+            }
+
+            if (me.X > finalPoint.X)
+            {
+                x = me.X - 1;
+                direction = Left();
+            }
+            else
+            {
+                x = me.X + 1;
+                direction = Right();
+            }
+            return new Point(x, me.Y);
+            
+        }
+
+        public string GetDirection(Point me, Point meNew)
+        {
+            var deltaX = Math.Abs(me.X - meNew.X);
+            var deltaY = Math.Abs(me.Y - meNew.Y);
+
+            if (deltaX < deltaY)
+            {
+                if (meNew.X >= MapSize-2)
+                    return Left();
+
+                if (meNew.X < 0)
+                    return Right();
+
+                return me.X > meNew.X ? Left() : Right();
+            }
+
+            if (meNew.Y >= MapSize-2)
+                return Up();
+
+            if (meNew.Y < 0)
+                return Down();
+
+            return me.Y > meNew.Y ? Up() : Down();
+        }
+
+        public Point GetNewPointWithoutWall(Point point)
+        {
+            if (!IsWallAt(point.X - 1, point.Y))
+            {
+                return new Point(point.X - 1, point.Y);
+            }
+
+            if (!IsWallAt(point.X + 1, point.Y))
+            {
+                return new Point(point.X + 1, point.Y);
+            }
+
+            if (!IsWallAt(point.X, point.Y - 1))
+            {
+                return new Point(point.X, point.Y - 1);
+            }
+
+            return new Point(point.X, point.Y + 1);
+        }
+
+        public bool Go()
+        {
+            var me = GetPlayerTank();
+            var nearestTank = GetNearestTank();
+
+            var newPoint = GetNewPoint(me, nearestTank, out string direction);
+            if (IsWallAt(newPoint.X, newPoint.Y))
+            {
+                newPoint = GetNewPointWithoutWall(newPoint);
+                direction = GetDirection(me, newPoint);
+            }
+
+            if (IsNear(me.X - 1, me.Y, Elements.OTHER_TANK_LEFT))
+            {
+                direction = Left();
+            } else if (IsNear(me.X + 1, me.Y, Elements.OTHER_TANK_RIGHT))
+            {
+                direction = Right();
+            } else if (IsNear(me.X, me.Y - 1, Elements.OTHER_TANK_UP))
+            {
+                direction = Up();
+            }
+            else if (IsNear(me.X, me.Y + 1, Elements.OTHER_TANK_DOWN))
+            {
+                direction = Down();
+            }
+
+            SendActions($"{direction},{Act()}");
+            return true;
+        }
+
+
+        public List<Point> GetBullets() =>
             FindingCoordinatesOfElements(
                 Elements.BULLET);
 
@@ -148,7 +366,9 @@ namespace CodeBattleNetLibrary
 
         public bool IsBarrierAt(int x, int y) => GetBarriers().Exists(barrier => IsAt(x, y, Map[barrier.X, barrier.Y]));
 
-        public bool IsNear(int x, int y, Elements element) => 
+        public bool IsWallAt(int x, int y) => GetWalls().Exists(wall => IsAt(x, y, Map[wall.X, wall.Y]));
+
+        public bool IsNear(int x, int y, Elements element) =>
             IsAt(x - 1, y, element) ||
             IsAt(x + 1, y, element) ||
             IsAt(x, y - 1, element) ||
